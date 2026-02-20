@@ -11,9 +11,10 @@ import (
 func main() {
 	commands := getCommands()
 	cfg := config{
-		cache: *pokecache.NewCache(1 * time.Minute),
-		next:  "https://pokeapi.co/api/v2/location-area/",
-		prev:  "",
+		cache:  *pokecache.NewCache(1 * time.Minute),
+		caught: make(map[string]pokemonResponse),
+		next:   "https://pokeapi.co/api/v2/location-area/",
+		prev:   "",
 	}
 
 	scanner := bufio.NewScanner(os.Stdin)

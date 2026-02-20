@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"pokedexcli/internal/pokecache"
@@ -11,9 +12,10 @@ import (
 )
 
 type config struct {
-	cache pokecache.Cache
-	next  string
-	prev  string
+	cache  pokecache.Cache
+	caught map[string]pokemonResponse
+	next   string
+	prev   string
 }
 
 type cliCommand struct {
@@ -48,6 +50,21 @@ func getCommands() map[string]cliCommand {
 			name:        "explore",
 			description: "Displays pokemon in the specified location",
 			callback:    commandExplorer,
+		},
+		"catch": {
+			name:        "catch",
+			description: "Attempts to catch the specified pokemon",
+			callback:    catchCommand,
+		},
+		"inspect": {
+			name:        "inspect",
+			description: "Displays pokemon information",
+			callback:    inspectCommand,
+		},
+		"pokedex": {
+			name:        "pokedex",
+			description: "Displays pokemon information",
+			callback:    pokedexCommand,
 		},
 	}
 }
@@ -221,5 +238,105 @@ func commandExplorer(cfg *config, args []string) error {
 		fmt.Printf("- %s\n", pokemon.Pokemon.Name)
 	}
 
+	return nil
+}
+
+type pokemonResponse struct {
+	Id             int    `json:"id"`
+	Name           string `json:"name"`
+	BaseExperience int    `json:"base_experience"`
+	Height         int    `json:"height"`
+	IsDefault      bool   `json:"is_default"`
+	Order          int    `json:"order"`
+	Weight         int    `json:"weight"`
+	Stats          []struct {
+		BaseStat int `json:"base_stat"`
+		Effort   int `json:"effort"`
+		Stat     struct {
+			Name string `json:"name"`
+			Url  string `json:"url"`
+		} `json:"stat"`
+	} `json:"stats"`
+	Types []struct {
+		Slot int `json:"slot"`
+		Type struct {
+			Name string `json:"name"`
+			Url  string `json:"url"`
+		} `json:"type"`
+	} `json:"types"`
+}
+
+func catchCommand(cfg *config, args []string) error {
+
+	pokemon := args[0]
+
+	res, err := http.Get(fmt.Sprintf("https://pokeapi.co/api/v2/pokemon/%s", pokemon))
+	if err != nil {
+		return err
+	}
+
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(res.Body)
+
+	var pokemonResponse pokemonResponse
+	err = json.NewDecoder(res.Body).Decode(&pokemonResponse)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Throwing a Pokeball at %s...\n", pokemonResponse.Name)
+
+	caught := attemptCatch(pokemonResponse.BaseExperience)
+
+	if caught {
+		cfg.caught[pokemonResponse.Name] = pokemonResponse
+		fmt.Printf("%s was caught!\n", pokemonResponse.Name)
+	} else {
+		fmt.Printf("%s escaped!\n", pokemonResponse.Name)
+	}
+
+	return nil
+}
+
+func attemptCatch(baseExperience int) bool {
+	// higher base exp = lower catch chance
+	// e.g. base 45 = ~82% chance, base 300 = ~13% chance
+	catchChance := 1.0 / (1.0 + float64(baseExperience)/50.0)
+	return rand.Float64() < catchChance
+}
+
+func inspectCommand(cfg *config, args []string) error {
+	pokemonName := args[0]
+
+	pokemon, ok := cfg.caught[pokemonName]
+	if !ok {
+		fmt.Printf("You have not caught a %s!\n", pokemonName)
+		return nil
+	}
+
+	fmt.Printf("Name: %s!\n", pokemon.Name)
+	fmt.Printf("Height: %d\n", pokemon.Height)
+	fmt.Printf("Weight: %d\n", pokemon.Weight)
+	fmt.Println("Stats:")
+	for _, stat := range pokemon.Stats {
+		fmt.Printf("-%s: %d\n", stat.Stat.Name, stat.BaseStat)
+	}
+	fmt.Println("Types:")
+	for _, typ := range pokemon.Types {
+		fmt.Printf("- %s\n", typ.Type.Name)
+	}
+
+	return nil
+}
+
+func pokedexCommand(cfg *config, args []string) error {
+	fmt.Println("Your Pokedex:")
+	for _, pokemon := range cfg.caught {
+		fmt.Printf("- %s\n", pokemon.Name)
+	}
 	return nil
 }
