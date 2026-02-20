@@ -19,7 +19,7 @@ type config struct {
 type cliCommand struct {
 	name        string
 	description string
-	callback    func(cfg *config) error
+	callback    func(cfg *config, args []string) error
 }
 
 func getCommands() map[string]cliCommand {
@@ -44,6 +44,11 @@ func getCommands() map[string]cliCommand {
 			description: "Displays the previous 20 Pokemon locations",
 			callback:    commandMapb,
 		},
+		"explore": {
+			name:        "explore",
+			description: "Displays pokemon in the specified location",
+			callback:    commandExplorer,
+		},
 	}
 }
 
@@ -51,13 +56,13 @@ func cleanInput(text string) []string {
 	return strings.Fields(strings.ToLower(text))
 }
 
-func commandExit(cfg *config) error {
+func commandExit(cfg *config, args []string) error {
 	fmt.Print("Closing the Pokedex... Goodbye!")
 	os.Exit(0)
 	return nil
 }
 
-func commandHelp(cfg *config) error {
+func commandHelp(cfg *config, args []string) error {
 	fmt.Println("Welcome to the Pokedex!")
 	fmt.Println("	Usage:")
 
@@ -77,11 +82,64 @@ type locationResponse struct {
 	} `json:"results"`
 }
 
-func commandMap(cfg *config) error {
+type locationAreaResponse struct {
+	Id                   int    `json:"id"`
+	Name                 string `json:"name"`
+	GameIndex            int    `json:"game_index"`
+	EncounterMethodRates []struct {
+		EncounterMethod struct {
+			Name string `json:"name"`
+			Url  string `json:"url"`
+		} `json:"encounter_method"`
+		VersionDetails []struct {
+			Rate    int `json:"rate"`
+			Version struct {
+				Name string `json:"name"`
+				Url  string `json:"url"`
+			} `json:"version"`
+		} `json:"version_details"`
+	} `json:"encounter_method_rates"`
+	Location struct {
+		Name string `json:"name"`
+		Url  string `json:"url"`
+	} `json:"location"`
+	Names []struct {
+		Name     string `json:"name"`
+		Language struct {
+			Name string `json:"name"`
+			Url  string `json:"url"`
+		} `json:"language"`
+	} `json:"names"`
+	PokemonEncounters []struct {
+		Pokemon struct {
+			Name string `json:"name"`
+			Url  string `json:"url"`
+		} `json:"pokemon"`
+		VersionDetails []struct {
+			Version struct {
+				Name string `json:"name"`
+				Url  string `json:"url"`
+			} `json:"version"`
+			MaxChance        int `json:"max_chance"`
+			EncounterDetails []struct {
+				MinLevel        int           `json:"min_level"`
+				MaxLevel        int           `json:"max_level"`
+				ConditionValues []interface{} `json:"condition_values"`
+				Chance          int           `json:"chance"`
+				Method          struct {
+					Name string `json:"name"`
+					Url  string `json:"url"`
+				} `json:"method"`
+			} `json:"encounter_details"`
+		} `json:"version_details"`
+	} `json:"pokemon_encounters"`
+}
+
+func commandMap(cfg *config, args []string) error {
 	return printLocations(cfg, cfg.next)
 }
 
-func commandMapb(cfg *config) error {
+func commandMapb(cfg *config, args []string) error {
 	return printLocations(cfg, cfg.prev)
 }
 
@@ -130,6 +188,37 @@ func printLocations(cfg *config, url string) error {
 
 	for _, location := range locations.Results {
 		fmt.Printf("%s\n", location.Name)
+	}
+
+	return nil
+}
+
+func commandExplorer(cfg *config, args []string) error {
+
+	location := args[0]
+
+	res, err := http.Get(fmt.Sprintf("https://pokeapi.co/api/v2/location-area/%s", location))
+	if err != nil {
+		return err
+	}
+
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(res.Body)
+
+	var locationAreaResponse locationAreaResponse
+	err = json.NewDecoder(res.Body).Decode(&locationAreaResponse)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Exploring %s...\n", location)
+	fmt.Println("Found Pokemon:")
+	for _, pokemon := range locationAreaResponse.PokemonEncounters {
+		fmt.Printf("- %s\n", pokemon.Pokemon.Name)
 	}
 
 	return nil

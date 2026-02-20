@@ -30,7 +30,7 @@ func main() {
 			continue
 		}
 
-		err := command.callback(&cfg)
+		err := command.callback(&cfg, sanitized[1:])
 		if err != nil {
 			continue
 		}
